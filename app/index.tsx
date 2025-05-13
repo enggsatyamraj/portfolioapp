@@ -7,7 +7,8 @@ import {
     ActivityIndicator,
     Platform,
     BackHandler,
-    TouchableOpacity
+    TouchableOpacity,
+    Linking
 } from 'react-native';
 import React, { useState, useRef, useEffect } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -59,9 +60,31 @@ export default function Index() {
         });
     };
 
-    // Handle navigation state change
+    // Check if URL is external
+    const isExternalLink = (url: string) => {
+        return !url.includes('enggsatyamraj.vercel.app');
+    };
+
+    // Handle navigation state change and external links
     const handleNavigationStateChange = (navState: any) => {
         setCanGoBack(navState.canGoBack);
+
+        // If it's an external link, open in device browser
+        if (isExternalLink(navState.url)) {
+            // Stop the WebView from loading the URL
+            webViewRef.current?.stopLoading();
+
+            // Open the URL in the device's browser
+            Linking.openURL(navState.url);
+
+            // Return to the portfolio
+            if (webViewRef.current) {
+                webViewRef.current.injectJavaScript(`
+                    window.location.href = 'https://enggsatyamraj.vercel.app/';
+                    true;
+                `);
+            }
+        }
     };
 
     // Handle WebView error
@@ -70,8 +93,16 @@ export default function Index() {
         setIsLoading(false);
     };
 
+    // Handle WebView load end - ensure loading indicator is hidden
+    const handleLoadEnd = () => {
+        setIsLoading(false);
+        // console.log("WebView fully loaded");
+    };
+
     // Loading progress
     const renderLoadingView = () => {
+        if (!isLoading) return null;
+
         return (
             <View style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color="#4A60A1" />
@@ -117,7 +148,7 @@ export default function Index() {
     // Render appropriate view based on state
     if (!isConnected) {
         return (
-            <SafeAreaView style={styles.container}>
+            <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
                 {renderOfflineView()}
             </SafeAreaView>
         );
@@ -125,21 +156,27 @@ export default function Index() {
 
     if (webViewError) {
         return (
-            <SafeAreaView style={styles.container}>
+            <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
                 {renderErrorView()}
             </SafeAreaView>
         );
     }
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
             <WebView
                 ref={webViewRef}
                 source={{ uri: 'https://enggsatyamraj.vercel.app/' }}
                 style={styles.webview}
                 onLoadStart={() => setIsLoading(true)}
-                onLoadEnd={() => setIsLoading(false)}
-                onLoadProgress={({ nativeEvent }) => setProgress(nativeEvent.progress)}
+                onLoadEnd={handleLoadEnd}
+                onLoadProgress={({ nativeEvent }) => {
+                    setProgress(nativeEvent.progress);
+                    // If progress is 100%, ensure loading is false
+                    if (nativeEvent.progress === 1) {
+                        setIsLoading(false);
+                    }
+                }}
                 onError={handleWebViewError}
                 onHttpError={handleWebViewError}
                 onNavigationStateChange={handleNavigationStateChange}
@@ -148,8 +185,10 @@ export default function Index() {
                 startInLoadingState={true}
                 cacheEnabled={true}
                 pullToRefreshEnabled={true}
+                // @ts-ignore
+                renderLoading={() => null} // Don't use the default loader
             />
-            {isLoading && renderLoadingView()}
+            {renderLoadingView()}
         </SafeAreaView>
     );
 }
@@ -173,6 +212,7 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         backgroundColor: 'rgba(255, 255, 255, 0.9)',
+        zIndex: 999,
     },
     loadingText: {
         marginTop: 10,
